@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.evs/
+.DS_Store
+
+# Fichiers produits par live-build dans linux/
+linux/.build/
+linux/cache/
+linux/chroot/
+linux/binary/
+linux/local/
+linux/live-image-*
+linux/*.iso
+linux/chroot.*
+linux/binary.*
+linux/config/binary
+linux/config/bootstrap
+linux/config/chroot
+linux/config/common
+linux/config/source
+linux/config/packages.chroot/

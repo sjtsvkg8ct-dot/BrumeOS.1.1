@@ -1,0 +1,102 @@
+{
+  "name": "brume-os",
+  "productName": "Brume OS",
+  "version": "1.0.0",
+  "description": "Brume OS, un système de bureau imaginaire avec un vrai navigateur.",
+  "main": "main.js",
+  "private": true,
+  "author": "Brume OS",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "github:castlabs/electron-releases#v45.2.1+wvcus",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "fr.brume.os",
+    "productName": "Brume OS",
+    "electronDownload": {
+      "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
+    },
+    "afterPack": "scripts/after-pack.js",
+    "afterSign": "scripts/after-sign.js",
+    "files": [
+      "index.html",
+      "main.js",
+      "preload.js",
+      "system.js",
+      "webview-preload.js",
+      "mail.js",
+      "printing.js",
+      "game.js",
+      "display.js",
+      "mac.js",
+      "web.js",
+      "hardware.js",
+      "siteicons.js",
+      "nearby.js",
+      "security.js",
+      "volume.js",
+      "calendar.js",
+      "mac/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "executableName": "brume-os",
+      "category": "Utility",
+      "maintainer": "Brume OS <brume-os@users.noreply.github.com>",
+      "synopsis": "Un système de bureau imaginaire avec un vrai navigateur."
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libgbm1",
+        "libasound2",
+        "libdrm2",
+        "libxkbcommon0",
+        "libcups2"
+      ]
+    },
+    "npmRebuild": false
+  },
+  "dependencies": {
+    "dbus-next": "^0.10.2",
+    "imapflow": "2.9.1",
+    "mailparser": "3.12.4",
+    "nodemailer": "10.2.1",
+    "ssh2": "1.17.0"
+  }
+}
