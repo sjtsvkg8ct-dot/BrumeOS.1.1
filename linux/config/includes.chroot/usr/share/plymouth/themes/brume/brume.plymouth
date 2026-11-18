@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Brume
+Description=Écrans de démarrage et d'arrêt de Brume OS : le logo (ou « Arrêt en cours ») et une barre de progression
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/brume
+ScriptFile=/usr/share/plymouth/themes/brume/brume.script

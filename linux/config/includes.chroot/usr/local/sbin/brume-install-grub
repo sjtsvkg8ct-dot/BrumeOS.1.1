@@ -1,0 +1,37 @@
+#!/bin/sh
+# Installateur, étape « démarrage » : installe sur le disque le paquet GRUB
+# qui correspond à l'ordinateur (UEFI, avec Secure Boot, ou ancien BIOS).
+# Lancé par Calamares : brume-install-grub <racine du système installé>
+set -eu
+ROOT="${1:?racine du système installé manquante}"
+DIR=/usr/share/brume/grub
+
+if [ -d /sys/firmware/efi ]; then PKG=grub-efi-amd64; else PKG=grub-pc; fi
+DEB=$(ls "$ROOT$DIR/${PKG}"_*.deb 2>/dev/null | head -n 1)
+if [ -z "$DEB" ]; then
+  echo "Paquet $PKG introuvable dans $DIR" >&2
+  exit 1
+fi
+
+# Toutes ses dépendances sont déjà dans l'image : rien n'est téléchargé.
+# dpkg et pas apt : quand la même version existe aussi dans les dépôts de Debian, apt veut la
+# télécharger plutôt que de prendre ce fichier, et échoue sans Internet (même avec --no-download).
+if ! chroot "$ROOT" env DEBIAN_FRONTEND=noninteractive dpkg -i "$DIR/$(basename "$DEB")"; then
+  echo "Installation de $PKG impossible. Versions sur le disque :" >&2
+  chroot "$ROOT" dpkg-query -W grub-common grub2-common grub-pc-bin grub-efi-amd64-bin ucf >&2 || true
+  echo "Ce que demande $(basename "$DEB") :" >&2
+  dpkg-deb -f "$DEB" Version Depends >&2 || true
+  exit 1
+fi
+
+# Windows (et les autres systèmes trouvés) apparaissent dans le menu de démarrage.
+mkdir -p "$ROOT/etc/default/grub.d"
+cat > "$ROOT/etc/default/grub.d/brume.cfg" <<'CFG'
+# Brume OS : cherche les autres systèmes (Windows…) et les ajoute au menu de démarrage.
+GRUB_DISABLE_OS_PROBER=false
+GRUB_TIMEOUT=5
+# Disque chiffré (case « Chiffrer le système » de l'installateur) : GRUB demande le mot de passe pour l'ouvrir.
+GRUB_ENABLE_CRYPTODISK=y
+CFG
+
+rm -rf "${ROOT:?}$DIR"

@@ -1,0 +1,48 @@
+#!/bin/bash
+# Lancé par cage à la place de l'application : brume-run <programme> [arguments…]
+#
+# cage se ferme quand tous les processus qui ont hérité de son « tube de fin » sont partis.
+# Un seul processus laissé derrière lui par l'application (un pactl qui écoute le son,
+# par exemple) suffirait à garder cage ouvert : l'écran resterait noir, sans relancer
+# Brume ni ouvrir l'installateur.
+#
+# Donc : on garde ce tube pour nous seuls, on lance l'application dans sa propre session
+# sans lui, et quand elle se ferme, on arrête ce qu'elle a laissé derrière elle.
+# Le code de sortie est celui de l'application.
+
+[ $# -gt 0 ] || { echo "brume-run : programme manquant" >&2; exit 2; }
+
+# Tous les descripteurs hérités au-delà de 0, 1 et 2 sont fermés pour l'application.
+close=""
+for f in /proc/$$/fd/*; do
+  n=${f##*/}
+  case "$n" in
+    0|1|2|255|*[!0-9]*) ;;
+    *) close="$close $n>&-" ;;
+  esac
+done
+
+# Dans sa propre session : ses processus forment un groupe qu'on peut arrêter d'un coup.
+# (stdin de l'application : /dev/null, comme pour toute tâche de fond.)
+eval "setsid \"\$@\" $close &"
+pid=$!
+
+# cage ou le système nous demandent de fermer : on transmet à l'application.
+trap 'kill -TERM "$pid" 2>/dev/null' TERM INT HUP
+
+wait "$pid"; status=$?
+# (wait s'interrompt quand un signal arrive : on attend encore la fin de l'application)
+while kill -0 "$pid" 2>/dev/null; do
+  wait "$pid"; status=$?
+done
+
+# Ce qui reste du groupe de l'application : prié de partir, puis arrêté.
+if kill -0 -- "-$pid" 2>/dev/null; then
+  kill -TERM -- "-$pid" 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 -- "-$pid" 2>/dev/null || break
+    sleep 0.2
+  done
+  kill -KILL -- "-$pid" 2>/dev/null
+fi
+exit "$status"

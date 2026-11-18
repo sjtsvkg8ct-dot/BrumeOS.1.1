@@ -1,0 +1,240 @@
+#!/usr/bin/python3 -I
+# Brume OS : met Brume lui-même à jour, moteur web compris (Debian s'occupe du reste du système).
+# Lancé en root par brume-maj.timer (quelques minutes après le démarrage, puis toutes les 6 heures), ou par Brume
+# (Réglages › Sécurité › « Rechercher » : polkit permet seulement de démarrer ce service).
+#  1. Demande à GitHub la dernière release du dépôt de Brume (/etc/brume/mises-a-jour.conf : DEPOT=propriétaire/dépôt).
+#  2. Si elle contient un paquet brume-os plus récent que celui installé, le télécharge en HTTPS, vérifie sa taille et
+#     son empreinte SHA-256 publiées par GitHub, puis son nom et sa version, et l'installe avec apt.
+#  3. Écrit où il en est dans /var/lib/brume-maj/etat.json, que Brume affiche.
+# Aucune adresse ni aucun fichier ne vient de l'utilisateur. La nouvelle version sert au prochain démarrage de Brume.
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+R = os.environ.get('BRUME_MAJ_RACINE', '')           # essais seulement (une copie du système)
+API = os.environ.get('BRUME_MAJ_API', 'https://api.github.com').rstrip('/')
+APT = os.environ.get('BRUME_MAJ_APT', '')            # essais seulement : remplace « apt-get install »
+CONF = R + '/etc/brume/mises-a-jour.conf'
+DIR = R + '/var/lib/brume-maj'
+CACHE = R + '/var/cache/brume-maj'
+PKG = 'brume-os'
+DEPOT_RE = re.compile(r'^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$')
+DEB_RE = re.compile(r'^brume-os_([0-9][A-Za-z0-9.+~-]{0,63})_amd64\.deb$')
+
+
+class Echec(Exception):
+    def __init__(self, code, detail=''):
+        super().__init__(code)
+        self.code, self.detail = code, detail
+
+
+def charger():
+    try:
+        with open(DIR + '/etat.json', encoding='utf-8') as f:
+            st = json.load(f)
+            return st if isinstance(st, dict) else {}
+    except Exception:
+        return {}
+
+
+def ecrire(st):
+    os.makedirs(DIR, exist_ok=True)
+    os.chmod(DIR, 0o755)
+    fd, tmp = tempfile.mkstemp(dir=DIR, prefix='.etat-')
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump(st, f, ensure_ascii=False)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, DIR + '/etat.json')
+
+
+def etat(**kw):
+    st = {k: v for k, v in charger().items() if k in ('installee', 'de', 'le')}
+    st.update(kw)
+    st['actuelle'] = installee()
+    st['quand'] = int(time.time())
+    ecrire(st)
+    return st
+
+
+def installee():
+    try:
+        r = subprocess.run(['dpkg-query', '-W', '-f=${Version}', PKG], capture_output=True, text=True, timeout=30)
+        return r.stdout.strip() if r.returncode == 0 else ''
+    except Exception:
+        return ''
+
+
+def plus_recente(a, b):
+    if not b:
+        return True
+    return subprocess.run(['dpkg', '--compare-versions', a, 'gt', b], timeout=30).returncode == 0
+
+
+def depot():
+    try:
+        with open(CONF, encoding='utf-8') as f:
+            for ligne in f:
+                m = re.match(r'^\s*DEPOT\s*=\s*"?([^"\s]*)"?\s*$', ligne)
+                if m and DEPOT_RE.match(m.group(1)):
+                    return m.group(1)
+    except OSError:
+        pass
+    return ''
+
+
+def ouvrir(url, timeout=30):
+    req = urllib.request.Request(url, headers={
+        'Accept': 'application/vnd.github+json', 'User-Agent': 'brume-maj', 'X-GitHub-Api-Version': '2022-11-28'})
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.HTTPError as e:
+        raise Echec('introuvable' if e.code == 404 else 'reseau', 'HTTP %d' % e.code)
+    except Exception as e:
+        raise Echec('reseau', str(e)[:200])
+
+
+def derniere_release(rep):
+    with ouvrir('%s/repos/%s/releases/latest' % (API, rep)) as r:
+        try:
+            rel = json.loads(r.read(4 * 1024 * 1024).decode('utf-8'))
+        except Exception:
+            raise Echec('reseau', 'réponse illisible')
+    paquets = []
+    for a in rel.get('assets') or []:
+        m = DEB_RE.match(str(a.get('name', '')))
+        if m:
+            paquets.append((m.group(1), a))
+    if not paquets:
+        return None, None
+    # La plus récente des versions trouvées (normalement une seule)
+    best = paquets[0]
+    for v, a in paquets[1:]:
+        if plus_recente(v, best[0]):
+            best = (v, a)
+    return best
+
+
+def telecharger(rep, version, a):
+    url = str(a.get('browser_download_url', ''))
+    ok_url = url.startswith('https://github.com/%s/releases/download/' % rep) or (API != 'https://api.github.com' and url.startswith(API + '/'))
+    if not ok_url:
+        raise Echec('verification', 'adresse inattendue')
+    taille = int(a.get('size') or 0)
+    if taille <= 0 or taille > 1024 * 1024 * 1024:
+        raise Echec('verification', 'taille inattendue')
+    digest = str(a.get('digest') or '')
+    attendu = digest[7:].lower() if digest.startswith('sha256:') else ''
+    os.makedirs(CACHE, exist_ok=True)
+    os.chmod(CACHE, 0o755)
+    for vieux in os.listdir(CACHE):
+        try:
+            os.remove(os.path.join(CACHE, vieux))
+        except OSError:
+            pass
+    if shutil.disk_usage(CACHE).free < taille * 3 + 300 * 1024 * 1024:
+        raise Echec('espace')
+    dest = os.path.join(CACHE, 'brume-os_%s_amd64.deb' % version)
+    h, recu, dernier = hashlib.sha256(), 0, 0.0
+    with ouvrir(url, timeout=60) as r, open(dest + '.part', 'wb') as f:
+        while True:
+            bloc = r.read(256 * 1024)
+            if not bloc:
+                break
+            recu += len(bloc)
+            if recu > taille:
+                raise Echec('verification', 'fichier trop long')
+            h.update(bloc)
+            f.write(bloc)
+            if time.time() - dernier > 1.5:
+                dernier = time.time()
+                etat(etat='telechargement', version=version, progression=round(recu / taille, 3))
+    if recu != taille:
+        raise Echec('verification', 'fichier incomplet')
+    if attendu and h.hexdigest() != attendu:
+        raise Echec('verification', 'empreinte SHA-256 différente')
+    os.chmod(dest + '.part', 0o644)
+    os.replace(dest + '.part', dest)
+    # Le paquet lui-même : bien Brume, la version annoncée, pour ce processeur
+    champs = {}
+    for k in ('Package', 'Version', 'Architecture'):
+        r = subprocess.run(['dpkg-deb', '-f', dest, k], capture_output=True, text=True, timeout=60)
+        champs[k] = r.stdout.strip()
+    if champs != {'Package': PKG, 'Version': version, 'Architecture': 'amd64'}:
+        raise Echec('verification', 'paquet inattendu : %s' % champs)
+    return dest
+
+
+def installer(fichier):
+    env = dict(os.environ, DEBIAN_FRONTEND='noninteractive')
+    if APT:
+        cmd = [APT, fichier]
+    else:
+        cmd = ['apt-get', 'install', '-y', '--no-install-recommends', '-o', 'DPkg::Lock::Timeout=600',
+               '-o', 'Dpkg::Options::=--force-confdef', '-o', 'Dpkg::Options::=--force-confold', fichier]
+    r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=3600)
+    if r.returncode != 0:
+        raise Echec('installation', (r.stderr or r.stdout).strip()[-300:])
+
+
+def main():
+    os.umask(0o022)
+    os.makedirs(DIR, exist_ok=True)
+    verrou = open(DIR + '/verrou', 'w')
+    try:
+        fcntl.flock(verrou, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print('Une recherche est déjà en cours.')
+        return 0
+    try:
+        with open(R + '/proc/cmdline') as f:
+            if 'boot=live' in f.read().split():
+                etat(etat='live')
+                return 0
+    except OSError:
+        pass
+    rep = depot()
+    if not rep:
+        etat(etat='non-configure')
+        print('Pas de dépôt dans %s : rien à faire.' % CONF)
+        return 0
+    etat(etat='verification')
+    try:
+        version, a = derniere_release(rep)
+        if not version:
+            etat(etat='aucune')
+            print('Aucun paquet brume-os dans la dernière release de %s.' % rep)
+            return 0
+        avant = installee()
+        if not plus_recente(version, avant):
+            etat(etat='a-jour', derniere=version)
+            print('Brume est à jour (%s).' % (avant or version))
+            return 0
+        print('Nouvelle version : %s (installée : %s).' % (version, avant or 'aucune'))
+        etat(etat='telechargement', version=version, progression=0)
+        fichier = telecharger(rep, version, a)
+        etat(etat='installation', version=version)
+        installer(fichier)
+        try:
+            os.remove(fichier)
+        except OSError:
+            pass
+        etat(etat='installee', installee=version, de=avant, le=int(time.time()), derniere=version)
+        print('Brume %s est installé : il servira au prochain démarrage de Brume.' % version)
+        return 0
+    except Echec as e:
+        etat(etat='erreur', erreur=e.code, detail=e.detail)
+        print('Mise à jour impossible (%s) : %s' % (e.code, e.detail), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

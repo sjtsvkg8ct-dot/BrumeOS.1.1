@@ -1,0 +1,29 @@
+// Brume OS : la personne assise devant l'ordinateur peut choisir son réseau Wi-Fi,
+// éteindre et redémarrer depuis Brume, le rendre visible dans AirDrop et lancer la recherche des mises à jour
+// de Brume, sans mot de passe administrateur.
+polkit.addRule(function (action, subject) {
+    if (!subject.local || !subject.active) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 &&
+        (subject.isInGroup("netdev") || subject.isInGroup("sudo"))) {
+        return polkit.Result.YES;
+    }
+    // AirDrop (omdrop) : rendre l'ordinateur visible aux iPhone et aux Mac proches, depuis Réglages › Partage
+    if ((action.id === "io.github.t4t5.omdrop-owl.discover" || action.id === "org.omarchy.omdrop.discover") &&
+        (subject.isInGroup("netdev") || subject.isInGroup("sudo"))) {
+        return polkit.Result.YES;
+    }
+    // Réglages › Sécurité › « Rechercher » : démarre la mise à jour de Brume (un service qui ne fait que ça)
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") === "brume-maj.service" && action.lookup("verb") === "start") {
+        return polkit.Result.YES;
+    }
+    if (action.id === "org.freedesktop.login1.power-off" ||
+        action.id === "org.freedesktop.login1.power-off-multiple-sessions" ||
+        action.id === "org.freedesktop.login1.reboot" ||
+        action.id === "org.freedesktop.login1.reboot-multiple-sessions") {
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

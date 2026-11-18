@@ -1,0 +1,63 @@
+#!/bin/sh
+# Lance Brume en plein écran dans le compositeur kiosque « cage ».
+# Si Brume se ferme, il redémarre aussitôt.
+# Si Brume a demandé l'installation sur le disque, l'installateur s'ouvre à sa place,
+# puis Brume revient quand on le ferme.
+
+export WLR_RENDERER_ALLOW_SOFTWARE=1                     # machines virtuelles sans 3D
+export WLR_NO_HARDWARE_CURSORS=1                         # curseur visible dans VirtualBox
+export BRUME_KIOSK=1
+ENV_FILE="$HOME/.config/brume-os/session.env"            # clavier choisi dans les Réglages de Brume
+INSTALL_FLAG="${XDG_RUNTIME_DIR:-/tmp}/brume-install"    # posé par Brume : « ouvrir l'installateur »
+INSTALL_RESULT="${XDG_RUNTIME_DIR:-/tmp}/brume-install-result"   # lu par Brume à son retour
+INSTALL_LOG="${XDG_RUNTIME_DIR:-/tmp}/brume-installer.log"
+# cage lance brume-run, qui lance l'application : quand elle se ferme, cage se ferme aussi,
+# même si elle a laissé un processus derrière elle (voir /usr/local/bin/brume-run).
+RUN=/usr/local/bin/brume-run
+
+# Disposition du clavier : celle choisie dans Brume, sinon celle du système
+# (choisie dans l'installateur), sinon AZERTY.
+load_keyboard() {
+  XKBLAYOUT=""; XKBVARIANT=""
+  if [ -r /etc/default/keyboard ]; then . /etc/default/keyboard; fi
+  layout="${XKBLAYOUT:-fr}"; variant="$XKBVARIANT"
+  XKB_DEFAULT_LAYOUT=""
+  if [ -r "$ENV_FILE" ]; then . "$ENV_FILE"; fi
+  if [ -n "$XKB_DEFAULT_LAYOUT" ] && [ "$XKB_DEFAULT_LAYOUT" != "$layout" ]; then
+    layout="$XKB_DEFAULT_LAYOUT"; variant=""
+  fi
+  if [ "$fails" -ge 5 ]; then layout=fr; variant=""; fi   # disposition illisible : on revient à AZERTY
+  export XKB_DEFAULT_LAYOUT="$layout" XKB_DEFAULT_VARIANT="$variant"
+}
+
+BIN="$(command -v brume-os || ls /opt/*/brume-os 2>/dev/null | head -n 1)"
+if [ -z "$BIN" ]; then
+  echo "Brume OS est introuvable dans /opt. L'image est incomplète."
+  sleep 30
+  exit 1
+fi
+
+fails=0
+while true; do
+  load_keyboard
+
+  if [ -f "$INSTALL_FLAG" ]; then
+    lang=$(sed -n 's/^LANG=\([a-z][a-z]\)$/\1/p' "$INSTALL_FLAG" | head -n 1)
+    keep=$(sed -n 's/^KEEP=\([01]\)$/\1/p' "$INSTALL_FLAG" | head -n 1)
+    rm -f "$INSTALL_FLAG" "$INSTALL_RESULT"
+    # L'installateur a besoin des droits d'administration (sudo sans mot de passe
+    # dans la session de la clé USB) et de l'écran de cette session.
+    # Ses messages vont dans un journal ; s'il s'arrête sur une erreur, Brume le dira à son retour.
+    cage -s -- "$RUN" sh -c 'exec sudo -n /usr/local/sbin/brume-calamares "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" "$1" "$2"' \
+      brume-installer "${lang:-fr}" "${keep:-1}" 2>"$INSTALL_LOG"
+    echo "status=$?" > "$INSTALL_RESULT"
+    continue
+  fi
+
+  start=$(date +%s)
+  cage -s -- "$RUN" "$BIN" --ozone-platform=wayland --brume-kiosk
+  # Trois échecs rapides de suite : on passe au rendu logiciel de cage.
+  if [ $(( $(date +%s) - start )) -lt 5 ]; then fails=$((fails + 1)); else fails=0; fi
+  if [ "$fails" -ge 3 ]; then export WLR_RENDERER=pixman; fi
+  sleep 1
+done

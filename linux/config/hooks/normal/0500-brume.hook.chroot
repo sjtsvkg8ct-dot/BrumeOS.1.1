@@ -1,0 +1,54 @@
+#!/bin/sh
+# Exécuté dans l'image pendant la construction.
+set -e
+
+# Scripts de session, d'ouverture automatique et d'installation.
+chmod 755 /usr/local/bin/brume-session /usr/local/bin/brume-run /usr/local/sbin/brume-*
+
+# Le bac à sable de Chromium (utilisé par Electron) doit appartenir à root.
+for sandbox in /opt/*/chrome-sandbox; do
+  if [ -f "$sandbox" ]; then
+    chown root:root "$sandbox"
+    chmod 4755 "$sandbox"
+  fi
+done
+
+# Ouverture de session : sur le premier écran, Brume démarre directement.
+# (Écrit ici plutôt que fourni comme fichier : les noms qui commencent par un point
+#  se perdent facilement en envoyant le dossier sur GitHub.)
+mkdir -p /etc/skel
+cat > /etc/skel/.bash_profile <<'EOF'
+# Sur le premier écran, la session démarre directement sur Brume.
+if [ -z "$WAYLAND_DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+  exec /usr/local/bin/brume-session
+fi
+
+[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+EOF
+
+# Nom de la machine.
+echo "brume" > /etc/hostname
+
+# Groupe des comptes qui ouvrent Brume sans mot de passe au démarrage
+# (case « Se connecter automatiquement » de l'installateur).
+getent group autologin >/dev/null || groupadd --system autologin
+
+# Paquets GRUB complets, installés sur le disque selon la machine (UEFI ou BIOS) :
+# ils ne peuvent pas être installés ensemble dans l'image.
+mkdir -p /usr/share/brume/grub
+cd /usr/share/brume/grub
+chown _apt:root . 2>/dev/null || true
+apt-get download grub-efi-amd64 grub-pc
+chown -R root:root .
+ls grub-efi-amd64_*.deb grub-pc_*.deb >/dev/null
+cd /
+
+# Message affiché sur les écrans texte (Ctrl+Alt+F2) de la clé USB.
+# Sur un ordinateur où Brume est installé, l'installateur le remplace.
+cat > /etc/issue <<'EOF'
+Brume OS 1.0 « Estran » — \l
+
+Session de secours. Identifiant : user · mot de passe : live
+Revenir à Brume : Ctrl+Alt+F1
+
+EOF

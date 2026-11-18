@@ -1,0 +1,48 @@
+#!/bin/sh
+# Ouvre l'installateur (Calamares) sur l'écran de Brume.
+# Lancé en root par brume-session, seulement depuis la clé USB :
+#   brume-calamares <prise wayland> <langue> <garder la session : 0|1>
+SOCK="${1:-}"
+LANG_UI="${2:-fr}"
+KEEP="${3:-1}"
+
+if ! grep -qw 'boot=live' /proc/cmdline; then
+  echo "Brume est déjà installé sur cet ordinateur." >&2
+  exit 1
+fi
+case "$SOCK" in
+  /run/user/*/wayland-*) ;;
+  *) echo "Écran de la session introuvable." >&2; exit 1 ;;
+esac
+case "$LANG_UI" in
+  fr) LOC=fr_FR.UTF-8 ;;
+  en) LOC=en_US.UTF-8 ;;
+  es) LOC=es_ES.UTF-8 ;;
+  de) LOC=de_DE.UTF-8 ;;
+  it) LOC=it_IT.UTF-8 ;;
+  pt) LOC=pt_PT.UTF-8 ;;
+  *) LANG_UI=fr; LOC=fr_FR.UTF-8 ;;
+esac
+[ "$KEEP" = 0 ] || KEEP=1
+
+STATE=/run/brume-installer
+mkdir -p "$STATE"
+chmod 700 "$STATE"
+echo "$KEEP" > "$STATE/keep"   # lu par brume-install-finish
+
+# Le /etc/fstab factice de la session live trompe l'outil de partitionnement.
+if [ -f /etc/fstab ]; then mv /etc/fstab "$STATE/fstab"; fi
+
+env -u LC_ALL \
+  WAYLAND_DISPLAY="$SOCK" QT_QPA_PLATFORM=wayland XDG_RUNTIME_DIR="$STATE" \
+  LANG="$LOC" LANGUAGE="$LANG_UI" HOME=/root \
+  calamares
+status=$?
+
+if [ -f "$STATE/fstab" ]; then mv "$STATE/fstab" /etc/fstab; fi
+# En cas d'erreur, la fin du journal de l'installateur rejoint celui de la session (montré par Brume).
+if [ "$status" -ne 0 ] && [ -r /root/.cache/calamares/session.log ]; then
+  echo "--- calamares (code $status) ---" >&2
+  tail -n 12 /root/.cache/calamares/session.log >&2
+fi
+exit $status

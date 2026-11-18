@@ -1,0 +1,40 @@
+# Apparence de l'installateur de Brume OS.
+---
+componentName:  brume
+welcomeStyleCalamares:   false
+welcomeExpandingLogo:   true
+windowExpanding:    normal
+windowSize: 900px,600px
+windowPlacement: center
+sidebar: widget
+navigation: widget
+
+strings:
+    productName:         "Brume OS"
+    shortProductName:    "Brume"
+    version:             "1.0 « Estran »"
+    shortVersion:        "1.0"
+    versionedName:       "Brume OS 1.0 « Estran »"
+    shortVersionedName:  "Brume OS 1.0"
+    bootloaderEntryName: "Brume OS"
+    productUrl:          ""
+    supportUrl:          ""
+    knownIssuesUrl:      ""
+    releaseNotesUrl:     ""
+    donateUrl:           ""
+
+images:
+    productLogo:         "brume-logo.png"
+    productIcon:         "brume-icon.png"
+    productWelcome:      "welcome.png"
+
+# Les couleurs de Brume : nuit bleutée, accent « Lanterne ».
+style:
+   SidebarBackground:        "#1a1f27"
+   SidebarText:              "#e9edf2"
+   SidebarTextCurrent:       "#231302"
+   SidebarBackgroundCurrent: "#d97f24"
+
+# Image affichée pendant la copie sur le disque.
+slideshow:
+    - "slide.png"

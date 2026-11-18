@@ -1,0 +1,30 @@
+#!/usr/sbin/nft -f
+# Brume OS : pare-feu (installé dans /etc/nftables.conf à la construction de l'image, chargé par nftables.service).
+# Tout ce qui arrive d'un autre appareil est refusé, sauf :
+#  - les réponses à ce que Brume a demandé (pages web, mises à jour, appels vidéo…) ;
+#  - l'adresse donnée par la box (DHCP), les messages techniques du réseau (ICMP) ;
+#  - la découverte des imprimantes et des appareils du réseau (mDNS) ;
+#  - le partage à proximité : LocalSend (Brume refuse tout fichier tant que la réception est coupée, et demande
+#    avant chaque envoi) et AirDrop (l'interface awdl0 n'existe que quand AirDrop est allumé).
+# Ce que Brume envoie vers l'extérieur n'est pas filtré.
+flush ruleset
+
+table inet brume {
+  chain entree {
+    type filter hook input priority filter; policy drop;
+    ct state established,related accept
+    ct state invalid drop
+    iif "lo" accept
+    meta l4proto ipv6-icmp accept
+    icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+    udp sport 67 udp dport 68 accept
+    udp sport 547 udp dport 546 accept
+    udp dport 5353 accept
+    tcp dport 53317 accept
+    udp dport 53317 accept
+    iifname "awdl0" accept
+  }
+  chain transfert {
+    type filter hook forward priority filter; policy drop;
+  }
+}

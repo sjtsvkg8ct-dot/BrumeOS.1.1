@@ -1,0 +1,16 @@
+# Micrologiciels (dépôt non-free-firmware) : sans eux, beaucoup de cartes Wi-Fi,
+# de puces graphiques et de cartes son des PC ne fonctionnent pas.
+firmware-linux
+firmware-amd-graphics
+firmware-intel-graphics
+firmware-nvidia-graphics
+firmware-misc-nonfree
+firmware-intel-sound
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-brcm80211
+firmware-mediatek
+firmware-libertas
+intel-microcode
+amd64-microcode

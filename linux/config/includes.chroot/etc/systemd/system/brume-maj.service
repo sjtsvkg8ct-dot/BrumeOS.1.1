@@ -1,0 +1,14 @@
+# Brume OS : met Brume à jour (voir /usr/local/sbin/brume-maj). Lancé par brume-maj.timer,
+# ou par Brume (Réglages › Sécurité › Rechercher), que polkit autorise à démarrer ce service et rien d'autre.
+[Unit]
+Description=Brume OS : mise à jour de Brume
+ConditionKernelCommandLine=!boot=live
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/brume-maj
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=1h

@@ -1,0 +1,18 @@
+# Brume OS : l'écran d'arrêt du système dans la langue de Brume (voir /usr/local/sbin/brume-arret).
+# Le service ne fait rien au démarrage ; il travaille quand il s'arrête, au tout début de l'extinction ou du
+# redémarrage. Il est ordonné avec les services de Plymouth : un arrêt passe toujours avant un démarrage, donc les
+# images sont en place avant que l'écran du système ne les lise.
+[Unit]
+Description=Brume OS : écran d'arrêt dans la langue de Brume
+Before=plymouth-poweroff.service plymouth-reboot.service plymouth-halt.service plymouth-kexec.service
+RequiresMountsFor=/home
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/local/sbin/brume-arret
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

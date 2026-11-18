@@ -1,0 +1,22 @@
+# Installateur : copie Brume sur le disque, à côté de Windows ou à sa place.
+calamares
+qt6-wayland
+rsync
+squashfs-tools
+
+# Partitions : redimensionner Windows (NTFS), créer la partition de démarrage UEFI
+ntfs-3g
+dosfstools
+e2fsprogs
+btrfs-progs
+
+# Démarrage : GRUB pour les PC UEFI (avec Secure Boot) et les anciens PC (BIOS).
+# Le paquet final (grub-efi-amd64 ou grub-pc) est choisi pendant l'installation.
+grub-efi-amd64-bin
+grub-efi-amd64-signed
+shim-signed
+grub-pc-bin
+grub2-common
+efibootmgr
+os-prober
+ucf

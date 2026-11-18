@@ -1,0 +1,22 @@
+#!/bin/sh
+# Brume OS : l'écran d'arrêt du système (thème Plymouth « brume ») dans la langue de Brume.
+# Lancé par brume-arret.service au tout début de l'extinction ou du redémarrage, avant que l'écran du système ne
+# s'affiche : Brume vient d'écrire sa langue dans ~/.config/brume-os/arret (« LANG=fr ») ; on met « Arrêt en cours »
+# et « Redémarrage en cours » dans cette langue à la place des images du thème. Sans fichier : en français.
+# BRUME_ROOT ne sert qu'aux essais (une copie du système).
+R=${BRUME_ROOT:-}
+T=$R/usr/share/plymouth/themes/brume
+lang=fr
+f=$(ls -t "$R"/home/*/.config/brume-os/arret 2>/dev/null | head -n 1)
+if [ -n "$f" ]; then
+  l=$(sed -n 's/^LANG=\([a-z][a-z]\)$/\1/p' "$f" 2>/dev/null | head -n 1)
+  case "$l" in
+    fr|en|es|de|it|pt) lang=$l ;;
+  esac
+fi
+for n in arret redemarrage; do
+  if [ -f "$T/$n-$lang.png" ]; then
+    cp -f "$T/$n-$lang.png" "$T/$n.png.tmp" && mv -f "$T/$n.png.tmp" "$T/$n.png"
+  fi
+done
+exit 0

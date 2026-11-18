@@ -1,0 +1,69 @@
+#!/bin/sh
+# Installateur, dernière étape : range le système copié sur le disque.
+# Lancé par Calamares : brume-install-finish <racine du système installé> <compte créé>
+set -u
+ROOT="${1:?racine du système installé manquante}"
+NEWUSER="${2:-}"
+inroot() { chroot "$ROOT" env DEBIAN_FRONTEND=noninteractive "$@"; }
+
+# 1. Les outils de la clé USB et l'installateur ne servent plus.
+inroot apt-mark manual os-prober nftables cryptsetup cryptsetup-initramfs >/dev/null 2>&1 || true
+remove=""
+for p in calamares live-boot live-boot-initramfs-tools live-config live-config-systemd live-tools; do
+  if inroot dpkg-query -W -f='${Status}\n' "$p" 2>/dev/null | grep -q ' installed$'; then
+    remove="$remove $p"
+  fi
+done
+if [ -n "$remove" ]; then
+  # shellcheck disable=SC2086
+  inroot apt-get purge -y $remove || echo "Avertissement : certains paquets de la session live restent installés." >&2
+fi
+inroot apt-get autoremove --purge -y || true
+rm -rf "$ROOT/etc/calamares" \
+       "$ROOT/usr/local/sbin/brume-calamares" \
+       "$ROOT/usr/local/sbin/brume-install-grub" \
+       "$ROOT/usr/local/sbin/brume-install-finish"
+
+# 2. Mises à jour : dépôts Debian et correctifs de sécurité.
+CODENAME=$( . "$ROOT/etc/os-release" 2>/dev/null; echo "${VERSION_CODENAME:-trixie}" )
+mkdir -p "$ROOT/etc/apt/sources.list.d"
+cat > "$ROOT/etc/apt/sources.list.d/debian.sources" <<SRC
+Types: deb
+URIs: http://deb.debian.org/debian
+Suites: $CODENAME $CODENAME-updates
+Components: main non-free-firmware
+
+Types: deb
+URIs: http://security.debian.org/debian-security
+Suites: $CODENAME-security
+Components: main non-free-firmware
+SRC
+echo "# Les dépôts sont dans /etc/apt/sources.list.d/debian.sources" > "$ROOT/etc/apt/sources.list"
+
+# 3. Ce qui a été fait dans Brume pendant la session de la clé USB
+#    (comptes, fichiers, réglages, musique, réseaux Wi-Fi) suit sur le disque.
+if [ -n "$NEWUSER" ]; then
+  HOME_DIR=$(inroot getent passwd "$NEWUSER" | cut -d: -f6)
+  if [ -n "$HOME_DIR" ] && [ -d "$ROOT$HOME_DIR" ]; then
+    KEEP=$(cat /run/brume-installer/keep 2>/dev/null || echo 1)
+    if [ "$KEEP" = 1 ]; then
+      mkdir -p "$ROOT$HOME_DIR/.config"
+      for d in "Brume OS" brume-os; do
+        if [ -d "/home/user/.config/$d" ]; then cp -a "/home/user/.config/$d" "$ROOT$HOME_DIR/.config/"; fi
+      done
+      for c in Cache "Code Cache" GPUCache DawnGraphiteCache DawnWebGPUCache; do
+        rm -rf "$ROOT$HOME_DIR/.config/Brume OS/$c"
+      done
+    fi
+    inroot chown -R "$NEWUSER:" "$HOME_DIR"
+  fi
+fi
+
+# 4. Écrans texte (Ctrl+Alt+F2) du système installé.
+cat > "$ROOT/etc/issue" <<'ISSUE'
+Brume OS 1.0 « Estran » — \l
+
+Écran de secours. Revenir à Brume : Ctrl+Alt+F1
+
+ISSUE
+exit 0

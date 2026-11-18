@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'">
+<title>Mac</title>
+<link rel="stylesheet" href="mac.css">
+</head>
+<body>
+<header id="bar">
+  <button type="button" id="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span data-l="back">Revenir à Brume</span></button>
+  <div class="mid"><i id="dot"></i><b id="name"></b><small id="state"></small></div>
+  <button type="button" id="ctrl" aria-pressed="true"><span data-l="ctrl">Ctrl = ⌘</span></button>
+  <button type="button" id="snd" aria-pressed="false" aria-expanded="false" aria-controls="sndpop"><span>Son</span></button>
+  <button type="button" id="fs"><span data-l="fullscreen">Plein écran</span></button>
+  <button type="button" id="quit"><span data-l="disconnect">Déconnecter</span></button>
+</header>
+<section id="sndpop" class="snd-pop" role="dialog" aria-labelledby="snd" hidden></section>
+<main id="screen"></main>
+<div id="veil">
+  <div class="card" role="status" aria-live="polite">
+    <div class="spin" id="spin"></div>
+    <p id="msg"></p>
+    <form id="login" hidden autocomplete="off">
+      <label><span data-l="user">Utilisateur</span><input id="lu" spellcheck="false" autocapitalize="off"></label>
+      <label><span data-l="password">Mot de passe</span><input id="lp" type="password"></label>
+      <button type="submit" class="accent" data-l="signin">Se connecter</button>
+    </form>
+    <div class="acts" id="acts" hidden>
+      <button type="button" id="close2" data-l="close">Fermer</button>
+      <button type="button" id="retry" class="accent" data-l="retry">Réessayer</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="mac-ui.js"></script>
+</body>
+</html>

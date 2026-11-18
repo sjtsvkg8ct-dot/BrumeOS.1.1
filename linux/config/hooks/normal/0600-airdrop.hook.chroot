@@ -1,0 +1,18 @@
+#!/bin/sh
+# AirDrop (expérimental) : installe omdrop-owl s'il a été préparé par la construction (voir .github/workflows/iso.yml).
+# Ne bloque jamais l'image : sans lui, Brume propose LocalSend.
+set -u
+DEB=$(ls /usr/share/brume/omdrop/omdrop-owl_*.deb 2>/dev/null | head -n 1)
+if [ -n "$DEB" ] && apt-get install -y "$DEB"; then
+  echo "AirDrop (omdrop-owl) installé."
+  # La commande omdrop, utilisable par tous les comptes
+  if [ -x /opt/omdrop-plugin/bin/omdrop ]; then
+    chmod -R a+rX /opt/omdrop-plugin
+    ln -sf /opt/omdrop-plugin/bin/omdrop /usr/local/bin/omdrop
+  fi
+else
+  echo "AirDrop (omdrop-owl) non installé : Brume proposera LocalSend."
+  rm -rf /opt/omdrop-plugin
+fi
+rm -rf /usr/share/brume/omdrop
+exit 0

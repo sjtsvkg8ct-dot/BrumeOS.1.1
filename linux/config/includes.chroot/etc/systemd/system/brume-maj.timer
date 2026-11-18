@@ -1,0 +1,12 @@
+# Brume OS : cherche une nouvelle version de Brume quelques minutes après le démarrage, puis toutes les 6 heures.
+[Unit]
+Description=Brume OS : recherche des mises à jour de Brume
+ConditionKernelCommandLine=!boot=live
+
+[Timer]
+OnBootSec=8min
+OnUnitActiveSec=6h
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

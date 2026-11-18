@@ -1,0 +1,4 @@
+// Brume OS installé sur disque : listes de paquets et correctifs de sécurité
+// téléchargés et installés chaque jour, sans rien demander.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";

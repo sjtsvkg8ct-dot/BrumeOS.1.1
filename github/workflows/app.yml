@@ -1,0 +1,87 @@
+# Construit l'application de bureau pour Windows, macOS et Linux.
+# - Publier une release sur GitHub : les installateurs sont ajoutés à la release.
+# - Lancement manuel (onglet Actions) : les installateurs sont dans les « Artifacts » de l'exécution.
+# - Lancé par « Moteur web à jour » (moteur.yml) avec l'étiquette de la release qu'il vient de créer.
+name: Construire l'application
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release à compléter (ex. v1.0.3) ; vide pour un simple essai"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Facultatif : compte EVS de castlabs (gratuit) pour signer Widevine sur Windows et macOS.
+      # Voir « Apple Music et la lecture protégée » dans le README.
+      EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
+      EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Version de Brume (d'après l'étiquette de la release, ex. v1.0.1), dépôt où il cherche ses mises à jour,
+      # et dernière version corrective de son moteur web (Chromium, par l'Electron de castlabs)
+      - name: Version et mises à jour
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/version.js "${{ github.event.release.tag_name || inputs.tag }}" "${{ github.repository }}"
+          node scripts/moteur.js
+
+      - name: Installer les dépendances
+        run: npm install
+
+      - name: Préparer la signature Widevine (EVS)
+        if: runner.os != 'Linux' && env.EVS_ACCOUNT_NAME != ''
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then python -m venv .evs; PY=.evs/Scripts/python.exe; else python3 -m venv .evs; PY=.evs/bin/python; fi
+          "$PY" -m pip install --upgrade castlabs-evs
+          "$PY" -m castlabs_evs.account --no-ask reauth -A "$EVS_ACCOUNT_NAME" -P "$EVS_PASSWD"
+          echo "EVS_PYTHON=$PY" >> "$GITHUB_ENV"
+
+      - name: Construire l'application
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Garder les installateurs
+        uses: actions/upload-artifact@v7
+        with:
+          name: brume-os-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: ignore
+
+      - name: Ajouter à la release
+        if: ${{ github.event.release.tag_name || inputs.tag }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*.exe dist/*.dmg dist/*.AppImage dist/*.deb; do
+            if [ -f "$f" ]; then
+              gh release upload "${{ github.event.release.tag_name || inputs.tag }}" "$f" --clobber
+            fi
+          done

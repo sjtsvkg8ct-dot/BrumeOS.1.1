@@ -1,0 +1,68 @@
+# Affichage : compositeur kiosque Wayland et pilotes graphiques
+cage
+# Résolution de l'écran depuis Réglages › Écran (cage accepte les réglages de wlr-randr)
+wlr-randr
+libgl1-mesa-dri
+adwaita-icon-theme
+
+# Écran de démarrage du système : logo de Brume et barre de progression (thème « brume »)
+plymouth
+
+# Session, droits et alimentation
+dbus-user-session
+sudo
+polkitd
+
+# Réseau : câble et Wi-Fi (réglés depuis Brume)
+network-manager
+wpasupplicant
+wireless-regdb
+
+# Son (vidéos dans Vigie et Ressac)
+pipewire-audio
+pulseaudio-utils
+
+# Bluetooth : casques, enceintes, claviers, souris, manettes (réglés depuis Brume)
+bluez
+libspa-0.2-bluetooth
+
+# Partage à proximité : AirDrop expérimental (omdrop, ajouté par la construction s'il est prêt) et LocalSend (intégré à Brume)
+pkexec
+iw
+wl-clipboard
+libnotify-bin
+
+# Impression : imprimantes réseau, Wi-Fi et USB (réglées depuis Brume)
+# Les imprimantes récentes marchent sans pilote (IPP Everywhere, AirPrint) ;
+# les pilotes ci-dessous couvrent les modèles plus anciens (HP, Epson, Canon, Brother, Samsung).
+cups
+cups-bsd
+cups-filters
+cups-browsed
+ipp-usb
+avahi-daemon
+libnss-mdns
+printer-driver-hpcups
+printer-driver-gutenprint
+printer-driver-brlaser
+printer-driver-splix
+
+# Langue, clavier et polices
+locales
+keyboard-configuration
+fonts-dejavu-core
+fonts-liberation2
+fonts-noto-color-emoji
+
+# Correctifs de sécurité installés automatiquement (système installé sur disque)
+unattended-upgrades
+
+# Sécurité : pare-feu (nftables), chiffrement du disque proposé par l'installateur (cryptsetup)
+nftables
+cryptsetup
+cryptsetup-initramfs
+console-setup
+
+# Mettre à jour Brume depuis l'écran de secours (voir le guide)
+wget
+ca-certificates

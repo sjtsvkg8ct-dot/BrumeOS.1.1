@@ -1,0 +1,45 @@
+#!/bin/sh
+# Écrans de démarrage et d'arrêt du système : thème Plymouth « brume » (/usr/share/plymouth/themes/brume),
+# le même logo (ou « Arrêt en cours ») et la même barre que les écrans de Brume.
+# Ne bloque jamais la construction : sans lui, le démarrage reste en mode texte.
+set -u
+
+mkdir -p /etc/plymouth
+cat > /etc/plymouth/plymouthd.conf <<'CONF'
+# Brume OS : thème de l'écran de démarrage (voir /usr/share/plymouth/themes/brume)
+[Daemon]
+Theme=brume
+ShowDelay=0
+CONF
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+  plymouth-set-default-theme brume || true
+fi
+
+# Active un service (comme « systemctl enable », qui peut échouer dans l'image en construction)
+activer() {
+  systemctl enable "$1" 2>/dev/null && return 0
+  for d in /etc/systemd/system /lib/systemd/system /usr/lib/systemd/system; do
+    if [ -f "$d/$1" ]; then
+      mkdir -p "/etc/systemd/system/$2.wants"
+      ln -sf "$d/$1" "/etc/systemd/system/$2.wants/$1"
+      return 0
+    fi
+  done
+  echo "Avertissement : $1 introuvable" >&2
+}
+
+# Écran d'arrêt du système dans la langue de Brume (voir /usr/local/sbin/brume-arret)
+if [ -f /etc/systemd/system/brume-arret.service ]; then
+  activer brume-arret.service multi-user.target
+fi
+
+# Pas de message de bienvenue de Debian à l'ouverture de la session (le nom commence par un point :
+# créé ici plutôt que fourni comme fichier, voir 0500-brume.hook.chroot).
+mkdir -p /etc/skel
+touch /etc/skel/.hushlogin
+
+# Le thème dans l'image de démarrage (initramfs)
+if command -v update-initramfs >/dev/null 2>&1; then
+  update-initramfs -u -k all || true
+fi
+exit 0

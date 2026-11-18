@@ -1,0 +1,19 @@
+#!/bin/sh
+# Ouvre la session du premier écran, qui lance Brume.
+# - Sur la clé USB (session live) : le compte « user », sans mot de passe.
+# - Sur un ordinateur où Brume est installé : le compte pour lequel la case
+#   « Se connecter automatiquement » a été cochée dans l'installateur.
+#   Sinon, l'écran demande l'identifiant et le mot de passe, puis lance Brume.
+TTY="${1:-tty1}"
+TERMTYPE="${2:-linux}"
+
+if grep -qw 'boot=live' /proc/cmdline; then
+  auto=user
+else
+  auto=$(getent group autologin | cut -d: -f4 | cut -d, -f1)
+fi
+
+if [ -n "$auto" ] && getent passwd "$auto" >/dev/null; then
+  exec /sbin/agetty --autologin "$auto" --noclear --noissue "$TTY" "$TERMTYPE"
+fi
+exec /sbin/agetty --noclear "$TTY" "$TERMTYPE"
