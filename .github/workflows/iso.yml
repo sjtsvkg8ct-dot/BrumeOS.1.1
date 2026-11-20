@@ -1,0 +1,103 @@
+# Construit l'image ISO de Brume OS : Debian 13 qui démarre directement sur Brume.
+# - Publier une release sur GitHub : l'ISO est ajoutée à la release.
+# - Lancement manuel (onglet Actions) : l'ISO est dans les « Artifacts » de l'exécution.
+# - Lancé par « Moteur web à jour » (moteur.yml) avec l'étiquette de la release qu'il vient de créer.
+name: Construire l'image Linux
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release à compléter (ex. v1.0.3) ; vide pour un simple essai"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ISO_NAME: brume-os-${{ github.event.release.tag_name || inputs.tag || 'essai' }}-amd64.iso
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Version de Brume (d'après l'étiquette de la release, ex. v1.0.1) et dépôt où il cherche ses mises à jour :
+      # Brume (Réglages › Sécurité) et le service brume-maj du système, qui installe les nouvelles versions tout seul.
+      # Et la dernière version corrective du moteur web (Chromium, par l'Electron de castlabs).
+      - name: Version et mises à jour
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/version.js "${{ github.event.release.tag_name || inputs.tag }}" "${{ github.repository }}"
+          node scripts/moteur.js
+          mkdir -p linux/config/includes.chroot/etc/brume
+          printf '%s\n' "# Dépôt GitHub où Brume cherche ses mises à jour (écrit à la construction de l'image)" \
+            "DEPOT=${{ github.repository }}" > linux/config/includes.chroot/etc/brume/mises-a-jour.conf
+
+      - name: Fabriquer le paquet .deb de Brume
+        run: |
+          npm install
+          npx electron-builder --linux deb --x64 --publish never
+          mkdir -p linux/config/packages.chroot
+          cp dist/*.deb linux/config/packages.chroot/
+
+      # AirDrop sur le système Linux (expérimental) : omdrop-owl (AWDL en logiciel, licence GPL) et la commande omdrop
+      # (licence MIT). Si cette étape échoue, l'image se construit quand même, sans AirDrop (LocalSend reste là).
+      - name: Préparer AirDrop (omdrop, expérimental)
+        continue-on-error: true
+        env:
+          OMDROP_OWL_REF: main          # remplacer par un commit précis pour figer la version
+          OMDROP_PLUGIN_REF: v0.18.6
+        run: |
+          set -euo pipefail
+          DEST=linux/config/includes.chroot
+          mkdir -p "$DEST/opt" "$DEST/usr/share/brume/omdrop"
+          git clone --depth 1 --branch "$OMDROP_PLUGIN_REF" https://github.com/netmojo-systems/omdrop-plugin.git "$DEST/opt/omdrop-plugin"
+          rm -rf "$DEST/opt/omdrop-plugin/.git"
+          git clone https://github.com/t4t5/omdrop-owl.git /tmp/omdrop-owl
+          git -C /tmp/omdrop-owl checkout "$OMDROP_OWL_REF"
+          docker run --rm -v /tmp/omdrop-owl:/src -w /src debian:trixie bash -c "
+            apt-get update &&
+            apt-get install -y --no-install-recommends build-essential cmake git ca-certificates python3 dpkg-dev fakeroot pkg-config \
+              libev-dev libpcap-dev libnl-3-dev libnl-genl-3-dev libnl-route-3-dev &&
+            bash tools/build-deb.sh"
+          find /tmp/omdrop-owl -name 'omdrop-owl_*.deb' -exec cp {} "$DEST/usr/share/brume/omdrop/" \;
+          ls -l "$DEST/usr/share/brume/omdrop/"*.deb
+
+      - name: Construire l'image avec live-build
+        run: |
+          docker run --rm --privileged \
+            -v "$PWD/linux:/build" -w /build \
+            debian:trixie \
+            bash -c "apt-get update && apt-get install -y live-build && bash ./build.sh"
+          sudo mv linux/brume-os-amd64.iso "$ISO_NAME"
+          sudo chown "$(id -u):$(id -g)" "$ISO_NAME"
+          ls -lh "$ISO_NAME"
+
+      - name: Garder l'image
+        uses: actions/upload-artifact@v7
+        with:
+          name: brume-os-iso
+          path: ${{ env.ISO_NAME }}
+          compression-level: 0
+
+      - name: Ajouter à la release
+        if: ${{ github.event.release.tag_name || inputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # GitHub refuse les fichiers de release de 2 Gio ou plus : l'image reste alors dans les Artifacts
+          if [ "$(stat -c %s "$ISO_NAME")" -ge 2147483648 ]; then
+            echo "::warning::L'ISO dépasse 2 Gio, la limite de GitHub pour un fichier de release. Télécharge-la dans les Artifacts de cette exécution (brume-os-iso)."
+            exit 0
+          fi
+          gh release upload "${{ github.event.release.tag_name || inputs.tag }}" "$ISO_NAME" --clobber
