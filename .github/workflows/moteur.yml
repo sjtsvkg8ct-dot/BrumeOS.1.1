@@ -1,0 +1,77 @@
+# Moteur web à jour : chaque semaine, regarde si castlabs a publié une version corrective de l'Electron de Brume
+# (donc de Chromium, son moteur web). Si oui : la note dans package.json, crée une release au numéro suivant
+# (v1.0.3 → v1.0.4) et lance la construction de l'application et de l'image Linux pour cette release.
+# Les ordinateurs où Brume est installé la trouvent ensuite tout seuls (Réglages › Sécurité).
+# Rien ne se passe tant qu'aucune release n'a été publiée à la main. Lancement manuel possible (onglet Actions).
+name: Moteur web à jour
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: moteur-web
+  cancel-in-progress: false
+
+jobs:
+  moteur:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Chercher une version corrective du moteur web
+        id: moteur
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          before=$(node -p "require('./package.json').devDependencies.electron")
+          node scripts/moteur.js
+          after=$(node -p "require('./package.json').devDependencies.electron")
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "after=$after" >> "$GITHUB_OUTPUT"
+          if [ "$before" = "$after" ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Créer la release suivante
+        if: steps.moteur.outputs.changed == 'true'
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          last=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)
+          if [ -z "$last" ]; then
+            echo "::notice::Aucune release publiée : publie d'abord la première à la main (voir le README)."
+            exit 0
+          fi
+          next=$(node -e '
+            const m=/^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/.exec(process.argv[1]);
+            if(!m){ process.exit(1); }
+            console.log("v"+m[1]+"."+(m[2]||0)+"."+(Number(m[3]||0)+1));' "$last") || {
+            echo "::warning::La dernière release ($last) n'a pas un numéro comme v1.0.3 : rien n'est publié."; exit 0; }
+          engine=$(echo "${{ steps.moteur.outputs.after }}" | sed 's/.*#//')
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Moteur web : ${engine}"
+          git push
+          gh release create "$next" --target "$(git rev-parse HEAD)" --title "Brume ${next#v}" \
+            --notes "Moteur web mis à jour (${engine}) : derniers correctifs de sécurité de Chromium. Les ordinateurs où Brume est installé l'installent tout seuls."
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+      # Une release créée par ce workflow ne déclenche pas les autres : on les lance nous-mêmes.
+      - name: Construire l'application et l'image Linux
+        if: steps.release.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run app.yml --ref "${{ steps.release.outputs.tag }}" -f tag="${{ steps.release.outputs.tag }}"
+          gh workflow run iso.yml --ref "${{ steps.release.outputs.tag }}" -f tag="${{ steps.release.outputs.tag }}"
